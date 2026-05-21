@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Cursor Vision – Visueller Test</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #1a1a2e; color: #eee; font-family: sans-serif; display: flex; height: 100vh; overflow: hidden; }
+
+    #sidebar {
+      width: 260px; min-width: 260px;
+      background: #16213e;
+      padding: 20px;
+      display: flex; flex-direction: column; gap: 16px;
+      overflow-y: auto;
+      z-index: 10;
+    }
+
+    h1 { font-size: 1rem; color: #e94560; letter-spacing: 1px; text-transform: uppercase; }
+    h2 { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+
+    .control { display: flex; flex-direction: column; gap: 6px; }
+
+    label { font-size: 0.85rem; color: #ccc; display: flex; justify-content: space-between; }
+    label span { color: #e94560; font-weight: bold; min-width: 40px; text-align: right; }
+
+    input[type=range] { width: 100%; accent-color: #e94560; }
+
+    .toggle {
+      display: flex; align-items: center; gap: 10px; cursor: pointer;
+      background: #0f3460; border: 1px solid #e94560;
+      padding: 8px 12px; border-radius: 6px;
+      font-size: 0.85rem; transition: background 0.2s;
+    }
+    .toggle:hover { background: #1a4a7a; }
+    .toggle.off { border-color: #555; background: #1a1a2e; color: #666; }
+
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #e94560; flex-shrink: 0;
+    }
+    .toggle.off .dot { background: #555; }
+
+    .status {
+      background: #0a0a1a; border: 1px solid #333;
+      padding: 10px; border-radius: 6px;
+      font-size: 0.75rem; line-height: 1.6; color: #888;
+    }
+    .status b { color: #e94560; }
+
+    .hint {
+      font-size: 0.75rem; color: #555; line-height: 1.5;
+      border-top: 1px solid #333; padding-top: 12px;
+    }
+
+    #canvas-wrap { flex: 1; position: relative; overflow: hidden; }
+    canvas { display: block; }
+
+    #mode-badge {
+      position: absolute; top: 12px; right: 12px;
+      background: rgba(233,69,96,0.15); border: 1px solid #e94560;
+      color: #e94560; font-size: 0.7rem; padding: 4px 10px; border-radius: 20px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h1>🔦 Cursor Vision</h1>
+  <p style="font-size:0.75rem;color:#666;">Visueller Test — kein Foundry nötig</p>
+
+  <div class="control">
+    <h2>Effekt</h2>
+    <div class="toggle" id="toggle-enabled" onclick="toggleSetting('enabled')">
+      <div class="dot"></div>
+      <span>Cursor Vision aktiv</span>
+    </div>
+  </div>
+
+  <div class="control">
+    <h2>Sichtradius</h2>
+    <label>Radius (px) <span id="val-radius">150</span></label>
+    <input type="range" min="50" max="600" step="10" value="150"
+           oninput="setSetting('radius', +this.value)">
+  </div>
+
+  <div class="control">
+    <h2>Kantentyp</h2>
+    <div class="toggle" id="toggle-softEdge" onclick="toggleSetting('softEdge')">
+      <div class="dot"></div>
+      <span>Weiche Kante</span>
+    </div>
+  </div>
+
+  <div class="control">
+    <h2>Dunkelheit</h2>
+    <label>Opacity <span id="val-opacity">1.0</span></label>
+    <input type="range" min="0.1" max="1.0" step="0.05" value="1.0"
+           oninput="setSetting('opacity', +this.value)">
+  </div>
+
+  <div class="control">
+    <h2>GM-Modus</h2>
+    <div class="toggle off" id="toggle-gm" onclick="toggleSetting('isGM')">
+      <div class="dot"></div>
+      <span>Als GM anzeigen</span>
+    </div>
+  </div>
+
+  <div class="status" id="status">
+    <b>Status:</b> Warte auf Initialisierung…
+  </div>
+
+  <div class="hint">
+    Bewege die Maus über die Karte rechts.<br>
+    Der Effekt simuliert genau das Verhalten in Foundry V14.
+  </div>
+</div>
+
+<div id="canvas-wrap">
+  <div id="mode-badge">SPIELER</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.2/pixi.min.js"></script>
+<script>
+// ── Einstellungen ─────────────────────────────────────────────────────────────
+const settings = {
+  enabled:  false,
+  radius:   150,
+  softEdge: true,
+  opacity:  1.0,
+  isGM:     false,
+};
+
+function setSetting(key, val) {
+  settings[key] = val;
+  if (key === "radius")  document.getElementById("val-radius").textContent = val;
+  if (key === "opacity") document.getElementById("val-opacity").textContent = val.toFixed(2);
+  CursorVision.refresh();
+}
+
+function toggleSetting(key) {
+  settings[key] = !settings[key];
+  const el = document.getElementById("toggle-" + key);
+  el.classList.toggle("off", !settings[key]);
+  if (key === "isGM") {
+    document.getElementById("mode-badge").textContent = settings.isGM ? "GM" : "SPIELER";
+  }
+  CursorVision.refresh();
+}
+
+// ── PIXI App ──────────────────────────────────────────────────────────────────
+const wrap = document.getElementById("canvas-wrap");
+const app  = new PIXI.Application({
+  resizeTo:        wrap,
+  backgroundColor: 0x1a1a2e,
+  antialias:       true,
+});
+wrap.appendChild(app.view);
+
+// Hintergrundbild: Dungeon-Gitter simulieren
+const bg = new PIXI.Graphics();
+drawBackground();
+app.stage.addChild(bg);
+
+function drawBackground() {
+  bg.clear();
+  const W = app.screen.width;
+  const H = app.screen.height;
+
+  // Dunkler Boden
+  bg.beginFill(0x0d1b2a).drawRect(0, 0, W, H).endFill();
+
+  // Gitter
+  bg.lineStyle(1, 0x1e3a5f, 0.5);
+  for (let x = 0; x < W; x += 50) { bg.moveTo(x, 0); bg.lineTo(x, H); }
+  for (let y = 0; y < H; y += 50) { bg.moveTo(0, y); bg.lineTo(W, y); }
+
+  // Raumumrisse
+  bg.lineStyle(2, 0x2e5e8e, 0.8);
+  bg.drawRect(50, 50, 300, 200);
+  bg.drawRect(400, 80, 250, 180);
+  bg.drawRect(100, 300, 400, 250);
+  bg.drawRect(550, 280, 180, 220);
+
+  // Dekorative Elemente
+  bg.beginFill(0x1a3a5c).drawRect(80, 80, 60, 40).endFill();
+  bg.beginFill(0x1a3a5c).drawRect(430, 110, 80, 60).endFill();
+  bg.beginFill(0x1a3a5c).drawRect(200, 350, 100, 80).endFill();
+
+  // Text-Labels
+  const style = new PIXI.TextStyle({ fill: 0x2e6e9e, fontSize: 11, fontFamily: "monospace" });
+  const labels = [
+    ["Raum A", 60, 60], ["Raum B", 410, 90],
+    ["Großer Saal", 110, 310], ["Kammer", 560, 290],
+  ];
+  for (const [txt, x, y] of labels) {
+    const t = new PIXI.Text(txt, style);
+    t.position.set(x, y);
+    bg.addChild(t);
+  }
+}
+
+window.addEventListener("resize", () => {
+  drawBackground();
+  CursorVision.refresh();
+});
+
+// ── CursorVision (exakte Kopie der Modul-Logik) ───────────────────────────────
+const CursorVision = {
+  _overlay:             null,
+  _tickerFn:            null,
+  _gradientCache:       null,
+  _gradientCacheRadius: -1,
+
+  get isActive() {
+    if (settings.isGM) return false;
+    return settings.enabled;
+  },
+
+  refresh() {
+    if (this.isActive) this._activate();
+    else               this._deactivate();
+    this._updateStatus();
+  },
+
+  _activate() {
+    if (this._overlay) return;
+    this._overlay = new PIXI.Container();
+    this._overlay.interactiveChildren = false;
+    app.stage.addChild(this._overlay);
+    this._tickerFn = () => this._draw();
+    app.ticker.add(this._tickerFn);
+  },
+
+  _deactivate() {
+    if (!this._overlay) return;
+    app.ticker.remove(this._tickerFn);
+    this._tickerFn = null;
+    this._overlay.destroy({ children: true });
+    this._overlay = null;
+    this._gradientCache = null;
+    this._gradientCacheRadius = -1;
+  },
+
+  _draw() {
+    if (!this._overlay) return;
+    const { radius, softEdge, opacity } = settings;
+    const mouse  = app.renderer.plugins.interaction?.mouse?.global ?? mousePos;
+    const bounds = { x: 0, y: 0, width: app.screen.width, height: app.screen.height };
+
+    this._overlay.removeChildren().forEach(c => c.destroy({ texture: false }));
+
+    const base = new PIXI.Graphics();
+    base.beginFill(0x000000, opacity);
+    base.drawRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    base.endFill();
+    this._overlay.addChild(base);
+
+    if (softEdge) this._drawSoftHole(mouse, radius);
+    else          this._drawHardHole(mouse, radius, opacity);
+  },
+
+  _drawHardHole(mouse, radius, opacity) {
+    const hole = new PIXI.Graphics();
+    hole.blendMode = PIXI.BLEND_MODES.ERASE;
+    hole.beginFill(0x000000, opacity);
+    hole.drawCircle(mouse.x, mouse.y, radius);
+    hole.endFill();
+    this._overlay.addChild(hole);
+  },
+
+  _drawSoftHole(mouse, radius) {
+    if (radius !== this._gradientCacheRadius) {
+      this._buildGradientTexture(radius);
+    }
+    const sprite = new PIXI.Sprite(this._gradientCache);
+    sprite.blendMode = PIXI.BLEND_MODES.ERASE;
+    sprite.width  = radius * 2;
+    sprite.height = radius * 2;
+    sprite.position.set(mouse.x - radius, mouse.y - radius);
+    this._overlay.addChild(sprite);
+  },
+
+  _buildGradientTexture(radius) {
+    const size = radius * 2;
+    const cvs  = document.createElement("canvas");
+    cvs.width  = size;
+    cvs.height = size;
+    const ctx  = cvs.getContext("2d");
+    const grad = ctx.createRadialGradient(radius, radius, 0, radius, radius, radius);
+    grad.addColorStop(0,    "rgba(0,0,0,1)");
+    grad.addColorStop(0.55, "rgba(0,0,0,0.9)");
+    grad.addColorStop(0.8,  "rgba(0,0,0,0.4)");
+    grad.addColorStop(1,    "rgba(0,0,0,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    if (this._gradientCache) this._gradientCache.destroy();
+    this._gradientCache = PIXI.Texture.from(cvs);
+    this._gradientCacheRadius = radius;
+  },
+
+  _updateStatus() {
+    const el = document.getElementById("status");
+    const active = this.isActive;
+    el.innerHTML = `
+      <b>Aktiv:</b> ${active ? "✅ Ja" : "❌ Nein"}<br>
+      <b>Modus:</b> ${settings.isGM ? "GM (sieht alles)" : "Spieler"}<br>
+      <b>Radius:</b> ${settings.radius}px<br>
+      <b>Kante:</b> ${settings.softEdge ? "Weich" : "Hart"}<br>
+      <b>Dunkelheit:</b> ${settings.opacity.toFixed(2)}<br>
+      <b>Overlay:</b> ${this._overlay ? "vorhanden" : "nicht aktiv"}
+    `;
+  },
+};
+
+// Mausposition tracken (Fallback für ältere PIXI-Versionen)
+const mousePos = { x: 0, y: 0 };
+app.view.addEventListener("mousemove", e => {
+  const rect = app.view.getBoundingClientRect();
+  mousePos.x = e.clientX - rect.left;
+  mousePos.y = e.clientY - rect.top;
+});
+
+// Starten
+CursorVision.refresh();
+</script>
+</body>
+</html>

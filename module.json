@@ -1,0 +1,22 @@
+{
+  "id": "cursor-vision",
+  "title": "Cursor Vision",
+  "description": "Taschenlampen-Effekt: Spieler sehen nur einen kleinen Bereich um ihren Cursor. Ideal für Erkundungsszenen ohne Token.",
+  "version": "1.0.0",
+  "compatibility": {
+    "minimum": "14",
+    "verified": "14"
+  },
+  "esmodules": ["scripts/cursor-vision.js"],
+  "authors": [
+    {
+      "name": "laulauthelowest",
+      "url": "https://github.com/laulauthelowest"
+    }
+  ],
+  "url": "https://github.com/laulauthelowest/cursor-vision",
+  "manifest": "https://raw.githubusercontent.com/laulauthelowest/cursor-vision/main/module.json",
+  "download": "https://github.com/laulauthelowest/cursor-vision/releases/latest/download/cursor-vision.zip",
+  "changelog": "https://github.com/laulauthelowest/cursor-vision/releases/latest",
+  "readme": "https://raw.githubusercontent.com/laulauthelowest/cursor-vision/main/README.md"
+}
